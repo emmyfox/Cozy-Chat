@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iMessage Twitch Chat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="chat-container"></div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const channelName = 'mcdemil'; 
+        const baseUrl = 'https://emmyfox.github.io/Forest-Chat/'; 
+
+        // Direct Emote Map for your native Twitch channel emotes
+        const customEmotes = {
+            'mcdemi1Heart': 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_9f7d43ef1909405fa932dc92b95b8637/default/dark/2.0',
+            'mcdemi1HeadBang': 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_b5c90b804f56477b91d2c6efefb97d28/default/dark/2.0',
+            'mcdemi1BigEyes': 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_c34177d853b04c86b24d7768e82ef6bb/default/dark/2.0',
+            'mcdemi1Lara': 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_9f7d43ef1909405fa932dc92b95b8637/default/dark/2.0',
+            'mcdemi1Cammy': 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_e3d360f64c4840939527ec1bf1d92631/default/dark/2.0',
+            'mcdemi1Clap': 'https://static-cdn.jtvnw.net/emoticons/v2/emotesv2_8435d88667c44cd897c83fca3bca24d3/default/dark/2.0'
+        };
+
+        const animalAssets = {
+            'bear': { file: 'bear.png', color: '#fff3cc' },
+            'cat': { file: 'cat.png', color: '#d1eaff' },
+            'dog': { file: 'dog.png', color: '#f2e6ff' },
+            'turtle': { file: 'turtle.png', color: '#ffe6f2' },
+            'deer': { file: 'deer.png', color: '#e0f5e0' },
+            'duck': { file: 'duck.png', color: '#fff3cc' },
+            'squirrel': { file: 'squirrel.png', color: '#d1eaff' },
+            'mouse': { file: 'mouse.png', color: '#f2e6ff' }
+        };
+
+        const animalKeys = Object.keys(animalAssets);
+        const userAssetMap = new Map();
+
+        function connectTwitchChat() {
+            const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+
+            ws.onopen = () => {
+                ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+                ws.send('NICK justinfan12345');
+                ws.send('JOIN #' + channelName);
+            };
+
+            ws.onmessage = (event) => {
+                const messageData = event.data;
+                
+                if (messageData.startsWith('PING')) {
+                    ws.send('PONG ' + messageData.split(' ')[1]);
+                    return;
+                }
+
+                if (messageData.includes('PRIVMSG')) {
+                    try {
+                        const parts = messageData.split(' ');
+                        const tagsPart = parts[0];
+                        
+                        const userMatch = tagsPart.match(/display-name=([^;]*)/);
+                        const nameMatch = tagsPart.match(/user-name=([^;]*)/);
+                        
+                        let displayName = userMatch && userMatch[1] ? userMatch[1] : '';
+                        let username = nameMatch && nameMatch[1] ? nameMatch[1].toLowerCase() : '';
+                        if (!username && displayName) username = displayName.toLowerCase();
+
+                        const chatMessageIndex = messageData.indexOf('PRIVMSG #' + channelName + ' :');
+                        if (chatMessageIndex === -1) return;
+                        let rawMessage = messageData.substring(chatMessageIndex + ('PRIVMSG #' + channelName + ' :').length).trim();
+
+                        appendChatMessage(username, displayName || username, rawMessage);
+                    } catch (err) {
+                        console.error('Error parsing chat message:', err);
+                    }
+                }
+            };
+
+            ws.onclose = () => {
+                setTimeout(connectTwitchChat, 5000);
+            };
+        }
+
+        // Parse message words and convert matching channel emotes to images instantly
+        function parseMessageContent(message) {
+            const words = message.split(' ');
+            return words.map(word => {
+                if (customEmotes[word]) {
+                    return `<img class="twitch-emote" src="${customEmotes[word]}" alt="${word}" />`;
+                }
+                return escapeHtml(word);
+            }).join(' ');
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        function appendChatMessage(username, displayName, message) {
+            const chatContainer = document.getElementById('chat-container');
+            let assignedAsset;
+
+            if (username === 'mcdemil') {
+                assignedAsset = { file: 'mcdemil.png', color: '#ffe6f2' };
+            } else if (username === 'binxycat_' || username === 'binxycat') {
+                assignedAsset = { file: 'binxycat_.png', color: '#f2e6ff' };
+            } else if (userAssetMap.has(username)) {
+                assignedAsset = userAssetMap.get(username);
+            } else {
+                const randomKey = animalKeys[Math.floor(Math.random() * animalKeys.length)];
+                assignedAsset = animalAssets[randomKey];
+                userAssetMap.set(username, assignedAsset);
+            }
+
+            const avatarUrl = baseUrl + assignedAsset.file;
+            const bubbleColor = assignedAsset.color;
+
+            const messageWrapper = document.createElement('div');
+            messageWrapper.classList.add('chat-message');
+
+            const avatarElement = document.createElement('img');
+            avatarElement.classList.add('avatar');
+            avatarElement.src = avatarUrl;
+            avatarElement.alt = username;
+
+            const bubbleElement = document.createElement('div');
+            bubbleElement.classList.add('message-bubble');
+            bubbleElement.style.backgroundColor = bubbleColor;
+            
+            const styleId = `tail-${bubbleColor.replace('#', '')}`;
+            if (!document.getElementById(styleId)) {
+                const styleSheet = document.createElement("style");
+                styleSheet.id = styleId;
+                document.head.appendChild(styleSheet);
+                styleSheet.innerHTML = `
+                    .chat-message .message-bubble[style*="${bubbleColor}"]::before { 
+                        background-color: ${bubbleColor}; 
+                    }
+                `;
+            }
+
+            bubbleElement.innerHTML = parseMessageContent(message);
+
+            messageWrapper.appendChild(avatarElement);
+            messageWrapper.appendChild(bubbleElement);
+            chatContainer.appendChild(messageWrapper);
+
+            // 5-minute fade-out timer (300,000 ms)
+            setTimeout(() => {
+                messageWrapper.classList.add('fade-out');
+                setTimeout(() => {
+                    if (messageWrapper.parentNode) {
+                        messageWrapper.parentNode.removeChild(messageWrapper);
+                    }
+                }, 500); 
+            }, 300000);
+
+            if (chatContainer.children.length > 25) {
+                chatContainer.removeChild(chatContainer.firstChild);
+            }
+        }
+
+        connectTwitchChat();
+    </script>
+</body>
+</html>
